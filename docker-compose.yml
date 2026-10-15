@@ -1,0 +1,95 @@
+services:
+  visit-db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: nextvisit
+      POSTGRES_USER: nextvisit
+      POSTGRES_PASSWORD: nextvisit
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nextvisit -d nextvisit"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  worker-db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: visitworker
+      POSTGRES_USER: visitworker
+      POSTGRES_PASSWORD: visitworker
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U visitworker -d visitworker"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  kafka:
+    image: apache/kafka:3.8.1
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+
+  visit-api:
+    build: ./visit-api
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://visit-db:5432/nextvisit
+      SPRING_DATASOURCE_USERNAME: nextvisit
+      SPRING_DATASOURCE_PASSWORD: nextvisit
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      NEXTVISIT_KAFKA_ENABLED: "true"
+    depends_on:
+      visit-db:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+
+  visit-worker:
+    build: ./visit-worker
+    ports:
+      - "8081:8081"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://worker-db:5432/visitworker
+      SPRING_DATASOURCE_USERNAME: visitworker
+      SPRING_DATASOURCE_PASSWORD: visitworker
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      SPRING_RABBITMQ_HOST: rabbitmq
+      NEXTVISIT_MESSAGING_ENABLED: "true"
+    depends_on:
+      worker-db:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+      rabbitmq:
+        condition: service_started
+
+  visit-web:
+    build: ./visit-web
+    ports:
+      - "3000:80"
+    depends_on:
+      - visit-api
+      - visit-worker

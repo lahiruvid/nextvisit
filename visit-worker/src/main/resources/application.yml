@@ -1,0 +1,30 @@
+server:
+  port: 8081
+
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5433/visitworker
+    username: visitworker
+    password: visitworker
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+  kafka:
+    bootstrap-servers: localhost:9092
+    consumer:
+      group-id: visit-worker
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: com.nextvisit.visitworker.adapter.kafka
+        spring.json.use.type.headers: false
+        spring.json.value.default.type: com.nextvisit.visitworker.adapter.kafka.VisitFact
+  rabbitmq:
+    host: localhost
+    port: 5672
+
+nextvisit:
+  messaging:
+    enabled: true
